@@ -1,0 +1,248 @@
+#Coastal marine use planning code
+#Author Pei Du
+#E-mail: 221301016@njnu.edu.cn
+
+#install.packages("raster")
+#install.packages("sf")
+#install.packages("gdalUtilities")
+#install.packages("dggridR")
+#install.packages("spdep")
+
+library(raster)
+library(sf)
+library(gdalUtilities)
+library(dggridR)
+library(spdep)
+
+#Definition of compatibility and cooperation matrix
+correption_matrix<-matrix(
+  nrow = 6,
+  ncol = 6,
+  c(1,1.6,1.6,0,1.6,0,1.6,1,1.6,0,1.6,0,1.6,1.6,1,0,1.6,0,0,0,0,1,1.6,0,1.6,1.6,1.6,1.6,1,1.6,0,0,0,0,1.6,1)
+)
+correption_number_matrix<-matrix(
+  nrow = 6,
+  ncol = 6,
+  c(1,7,8,9,10,11,7,2,12,13,14,15,8,12,3,16,17,18,9,13,16,4,19,20,10,14,17,19,5,21,11,15,18,20,21,6)
+)
+
+nbsumCompatibility_matrix <-
+  matrix(
+    nrow = 6,
+    ncol = 6,
+    c(
+      0.75, 0.5,0.25, 0,0.5,0,0.5,0.75, 0.5,0,0.25,0, 0.25, 0.5,1,0,0.25, 0,0,0,0,1,0.25, 0,0.5,0.25, 0.25, 0.25, 0.75, 0,0,0,0,0,0,1
+    )
+  )
+
+land_sea_Compatibility_matrix <-
+  matrix(
+    nrow = 5,
+    ncol = 8,
+    c(
+      0,0,0.25,  0, 0.25, 0.25, 0.25, 0.25, 0,0.25, 0.25, 0,0,0.25, 1,0.75, 0,0,0.25, 0,0.25, 0.25, 1,0.25, 0,0.5,0,0.25, 0,1,0,0,0,1,0,0,1,0,0,0
+    )
+  )
+
+#Load the template of marine use to be calculated and initialization
+
+#The template for marine use planning
+grid_LS_suitable<-st_read( "Template_for_marine_use_planning.shp")
+
+#The template for onshore industries
+land_grid <- st_read("Template_for_onshore_industries.shp")
+
+#The Pre-calculated distance matrix
+load("Pre_calculated_distance_matrix.RData")
+
+#Compute the neighbourhood
+Nb <- poly2nb(grid_LS_suitable)
+
+change_number <- 0
+seatype_original <- st_drop_geometry(grid_LS_suitable$seatype)
+for (l in 1:length(grid_LS_suitable$type1)) {
+  if (grid_LS_suitable$sea[l] != 0)
+  {
+    #Score_value for different marine use types
+    F_value <- c(0, 0, 0, 0, 0)
+    F1 <- c()
+    F1_land <- c()
+    F1_sea <- c()
+    F2 <- c()
+    F2_land <- c()
+    F2_sea <- c()
+    F3 <- c()
+    F4 <- c()
+    nb_temp_2 <- Nb[[l]]
+    if (nb_temp_2 == 0 || length(nb_temp_2) == 0)
+    {
+      print("next")
+      next
+    }
+    for (sea_type in 1:5) {
+      grid_LS_suitable$seatype[l] <- sea_type
+      
+      # for Maritime Compatibility Computing
+      nb_Compatibility <- c()
+      
+      for (k in 1:length(nb_temp_2)) {
+        nb_Compatibility <-
+          c(nb_Compatibility, nbsumCompatibility_matrix[sea_type, grid_LS_suitable$seatype[nb_temp_2[k]]])
+        
+      }
+      #Minimum marine Compatibility Calculation
+      nb_Compatibility_min <- min(nb_Compatibility)
+      type_sim <- 0
+      totalnum <- 0
+      #Calculation of global compatibility
+      for (i in 1:length(grid_LS_suitable$type1)) {
+        if (grid_LS_suitable$sea[i] != 0)
+        {
+          nb_temp <- Nb[[i]]
+          total_Compatibility_sum <- 0
+          total_Depency_sum <- 0
+          nb_Compatibility_sum <- 0
+          type_sim_temp <- 0
+          if (length(nb_temp) > 1)
+          {
+            for (j in 1:length(nb_temp)) {
+              Compatib_temp <-
+                nbsumCompatibility_matrix[grid_LS_suitable$seatype[i], grid_LS_suitable$seatype[nb_temp[j]]]
+              
+              nb_Compatibility_sum <-
+                nb_Compatibility_sum + Compatib_temp
+              
+              if (grid_LS_suitable$seatype[i] == grid_LS_suitable$seatype[nb_temp[j]])
+              {
+                type_sim_temp <- type_sim_temp + 1
+              }
+            }
+          }
+          if (length(nb_Compatibility_sum) != 0)
+          {
+            total_Compatibility_sum <-
+              total_Compatibility_sum + nb_Compatibility_sum / length(nb_temp)
+            #Computating the compactness
+            type_sim <- type_sim + type_sim_temp / length(nb_temp)
+            totalnum <- totalnum + 1
+          }
+        }
+      }
+      #Gaining the marine compatibility for "sea_type" of grid l
+      mean_Compatibility_mean <- total_Compatibility_sum / totalnum
+      #Gaining the compactness for "sea_type" of grid l
+      type_sim_mean <- type_sim / totalnum
+      
+      #Caculating the land-sea compatibility
+      Compatibility_land_sum <- 0
+      land_inflance_num <- 0
+      for (j in 1:length(land_grid$type1)) {
+        dis_temp <- distance_matrix[j, l] * 0.001
+        dis_temp <- as.numeric(dis_temp)
+        if (dis_temp <= 50)
+        {
+          dis_ceta = 1
+          if(dis_temp<=10)
+          {
+            dis_ceta = 1
+          }else
+          {
+            dis_ceta <- 1 - (dis_temp-10)/40 
+          }
+
+          land_sea_Compatibility_temp <-
+            dis_ceta * land_sea_Compatibility_matrix[grid_LS_suitable$seatype[l], land_grid$type_all[j]]
+          Compatibility_land_sum <-
+            Compatibility_land_sum + land_sea_Compatibility_temp
+
+          land_inflance_num <- land_inflance_num + 1
+        }
+      }
+      if (land_inflance_num == 0)
+      {
+        land_inflance_num <- 1
+      }
+      #Gaining the land-sea compatibilitys for "sea_type" of grid l
+      Compatibility_land_mean <-
+        Compatibility_land_sum / land_inflance_num
+      
+      #Save calculation results
+      F1_sea <- c(F1_sea, nb_Compatibility_min + mean_Compatibility_mean)
+      F1_land <- c(F1_land, Compatibility_land_mean)
+      F3 <- c(F3, type_sim_mean)
+      
+    }
+    # Obtaining suitability for different marine use types
+    wind_s <- grid_LS_suitable$wind_s[l]
+    Sality_s <- grid_LS_suitable$Salty_s[l]
+    ShipNav_s <- grid_LS_suitable$ShpNv_s[l]
+    Fish_s <- grid_LS_suitable$Fish_s[l]
+    #Handling null values
+    if (is.na(Sality_s))
+    {
+      Sality_s <- 0
+    }
+    if (is.na(ShipNav_s))
+    {
+      ShipNav_s <- 0
+    }
+    if (is.na(Fish_s))
+    {
+      Fish_s <- 0
+    }
+    if (is.na(wind_s))
+    {
+      wind_s <- 0
+    }
+    F4 <-
+      c(wind_s,
+        Sality_s,
+        Fish_s,
+        ShipNav_s,
+        grid_LS_suitable$Playr_s[l])
+    
+    #Caculating the Score values
+    score <- F1_sea * 0.2 +  F1_land*0.2 + F3 * 0.2+ F4 * 0.4
+    
+    #Judging whether they can cooperate
+    correct<-order(score,decreasing = TRUE)
+    temp_col1<-1
+    temp_col2<-0
+    temp_flag<-FALSE
+      for (co1 in 3:1) {
+        c<-correption_matrix[correct[temp_col1],correct[co1]]
+        if(c>1&& score[correct[co1]]>0.3 )
+        {
+          temp_col2<-correct[co1]
+          temp_flag<-TRUE
+        }
+      }
+    if(temp_flag==FALSE)
+    {
+      temp_col2 = correct[temp_col1]
+    }
+
+    Number_cor<-correption_number_matrix[correct[temp_col1],temp_col2]
+    non_cop<-0
+
+    non_cop<-which(score == max(score), arr.ind = TRUE)
+    
+    #Recording the calculation results
+    grid_LS_suitable$seatype[l] <- non_cop
+    grid_LS_suitable$cooprtn[l] <- Number_cor
+    if (seatype_original[l] != grid_LS_suitable$seatype[l])
+    {
+      change_number <- change_number + 1
+    }
+    print(l)
+  }
+}
+
+#Non-cooperative marine use planning results
+plot(grid_LS_suitable[, 22])
+#Cooperative marine use planning results
+plot(grid_LS_suitable[, 23])
+
+
+
+

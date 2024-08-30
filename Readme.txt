@@ -1,0 +1,3 @@
+The file of "Code" provides the demo code and necessary data to run the coastal marine spatial planning.
+The file of "Data" provides the raw data for the marine spatial resource assessment, and the specific calculation methods and data sources are described in the document "Suitability assessment method.docx"
+In addition, The file of "hexagonal space calculation grid" provide the benchmark for spatial calculation, and the file of "Suitability assessment results for different marine use types" provide the Suitability assessment results, and the file of "Onshore industries" provides the spatial distribution of onshore industries in Jiangsu Province, China.

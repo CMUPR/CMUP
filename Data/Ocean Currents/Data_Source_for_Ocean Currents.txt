@@ -1,0 +1,2 @@
+Note：
+Ocean current data is too large to be stored here (222G for 2023 entire year). this paper uses current data for the entire year 2023, which can be found in the HYCOM datasets in https://www.ncei.noaa.gov/thredds-coastal/catalog/hycom_sfc/catalog.html
