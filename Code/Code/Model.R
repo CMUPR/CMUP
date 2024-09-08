@@ -1,6 +1,4 @@
 #Coastal marine use planning code
-#Author Pei Du
-#E-mail: 221301016@njnu.edu.cn
 
 #install.packages("raster")
 #install.packages("sf")
